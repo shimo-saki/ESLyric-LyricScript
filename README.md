@@ -1,0 +1,2 @@
+# ESLyric-LyricScript
+Foobar2000歌词组件ESLyric的歌词搜索脚本
