@@ -1,6 +1,6 @@
 export function getConfig(cfg) {
     cfg.name = "酷狗音乐";
-    cfg.version = "1.0";
+    cfg.version = "1.0.1";
     cfg.author = "ameyuri";
 }
 
@@ -92,7 +92,7 @@ function parse_translate(content) {
             .filter(item => item.type === 1)
             .flatMap(item =>
                 item.lyricContent.map(line =>
-                    line[0].startsWith("TME") ? "" : line[0].replace(/[,，]+/g, " ")
+                    line[0].startsWith("TME") || line[0].startsWith("//") ? "" : line[0].replace(/[,，]+/g, " ")
                 )
             );
     }
