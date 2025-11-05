@@ -1,7 +1,7 @@
 
 export function getConfig(cfg) {
     cfg.name = "QQ 音乐"
-    cfg.version = "1.0"
+    cfg.version = "1.1"
     cfg.author = "ameyuri"
 }
 
@@ -118,33 +118,28 @@ function parse(lyric, translate) {
 
 function parseLrc(content) {
     // 替换信息标签
-    return content.replace(/\[[ti|ar|al|by|offset|kana|language|ch].*\]\n/gm, "")
-        .replace(/^\[(\d+),(\d+)\]/gm, (match, startTime, duration) => `[${formatTime(parseInt(startTime))}]<${formatTime(parseInt(startTime))}>`)
-        .replace(/[<\(](\d+),(\d+)[>\)]/gm, (match, startTime, duration) => `<${formatTime(parseInt(startTime) + parseInt(duration))}>`)
+    return content.replace(/\[(ti|ar|al|by|offset|kana|language|ch).*\]\n/gm, "")
+        .replace(/^\[(\d+),(?:\d+)\]/gm, (_, startTime) => `[${formatTime(parseInt(startTime))}]<${formatTime(parseInt(startTime))}>`)
+        .replace(/[<\(](\d+),(\d+)[>\)]/gm, (_, startTime, duration) => `<${formatTime(parseInt(startTime) + parseInt(duration))}>`)
         .split(/\r?\n/);
 }
 
 function parseTranslate(content) {
     return content.replace(/^\[.*?\]\n?|\/\//gm, "")
-        .replace(/[,，]+/gm, " ")
+        .replace(/[,， 　]+/gm, " ")
         .split(/\r?\n/);
 }
 
 function parseMerge(lyric, translate) {
-    /**
-     * 合并Lrc和翻译，若无翻译则直接返回Lrc
-     */
-    if (!translate || translate.length === 0) return lyric;
+    if (!translate?.length) return lyric;
 
-    return lyric.reduce((result, lyricLine, index) => {
-        if (!lyricLine) return result;
+    return lyric.flatMap((lyricLine, index) => {
+        if (!lyricLine) return [];
 
-        result.push(lyricLine);
-        if (translate[index]) {
-            result.push(`${lyricLine.slice(0, 10)}${translate[index]}`);
-        }
+        const result = [lyricLine];
+        if (translate[index]) result.push(`${lyricLine.slice(0, 10)}${translate[index]}`);
         return result;
-    }, []);
+    });
 }
 
 function metaInfo(meta) {
