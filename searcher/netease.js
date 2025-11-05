@@ -1,6 +1,6 @@
 export function getConfig(config) {
     config.name = "网易云音乐";
-    config.version = "1.1";
+    config.version = "1.2";
     config.author = "ameyuri";
 }
 
@@ -27,9 +27,9 @@ export function getLyrics(meta, man) {
             lyricMeta.artist = song.artist;
             lyricMeta.album = song.album;
             if (data?.yrc?.lyric) {
-                lyricMeta.lyricText = metaInfo(meta) + parse(data?.yrc?.lyric, (data?.tlyric?.lyric ?? ""));
+                lyricMeta.lyricText = metaInfo(meta) + parse(data.yrc.lyric, (data?.tlyric?.lyric ?? ""));
             } else if (data?.lrc?.lyric && !(/纯音乐|\[00:00\.00-1\]/).test(data.lrc.lyric)) {
-                lyricMeta.lyricText = metaInfo(meta) + data?.lrc?.lyric + (data?.tlyric?.lyric ?? "");
+                lyricMeta.lyricText = metaInfo(meta) + data.lrc.lyric + (data?.tlyric?.lyric ?? "");
             }
             man.addLyric(lyricMeta);
         });
@@ -45,33 +45,28 @@ function parse(lyric, translate) {
 
 function parseLrc(content) {
     // 替换信息标签
-    return content.replace(/\[[ti|ar|al|by|offset|kana|language|ch].*\]\n/gm, "")
-        .replace(/^\[(\d+),(\d+)\]/gm, (match, startTime, duration) => `[${formatTime(parseInt(startTime))}]<${formatTime(parseInt(startTime))}>`)
-        .replace(/[<\(](\d+),(\d+),(\d+)[>\)]([^<\(\n]*)/gm, (match, startTime, duration, _, word = "") => `${word}<${formatTime(parseInt(startTime) + parseInt(duration))}>`)
+    return content.replace(/\[(ti|ar|al|by|offset|kana|language|ch)?.*\]\s*\n/gm, "")
+        .replace(/^\[(\d+),(?:\d+)\]/gm, (_, startTime) => `[${formatTime(parseInt(startTime))}]<${formatTime(parseInt(startTime))}>`)
+        .replace(/[<\(](\d+),(\d+),(?:\d+)[>\)]([^<\(\n]*)/gm, (_, startTime, duration, word = "") => `${word}<${formatTime(parseInt(startTime) + parseInt(duration))}>`)
         .split(/\r?\n/);
 }
 
 function parseTranslate(content) {
-    return content.replace(/^\[.*?\]\n?/gm, "")
-        .replace(/[,，]+/gm, " ")
+    return content.replace(/^\[.*?\]\s*\n?/gm, "")
+        .replace(/[,，　]+/gm, " ")
         .split(/\r?\n/);
 }
 
 function parseMerge(lyric, translate) {
-    /**
-     * 合并Lrc和翻译，若无翻译则直接返回Lrc
-     */
-    if (!translate || translate.length === 0) return lyric;
+    if (!translate?.length) return lyric;
 
-    return lyric.reduce((result, lyricLine, index) => {
-        if (!lyricLine) return result;
+    return lyric.flatMap((lyricLine, index) => {
+        if (!lyricLine) return [];
 
-        result.push(lyricLine);
-        if (translate[index]) {
-            result.push(`${lyricLine.slice(0, 10)}${translate[index]}`);
-        }
+        const result = [lyricLine];
+        if (translate[index]) result.push(`${lyricLine.slice(0, 10)}${translate[index]}`);
         return result;
-    }, []);
+    });
 }
 
 function metaInfo(meta) {
