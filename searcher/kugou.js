@@ -1,6 +1,6 @@
 export function getConfig(cfg) {
     cfg.name = "酷狗音乐";
-    cfg.version = "1.0.1";
+    cfg.version = "1.1";
     cfg.author = "ameyuri";
 }
 
@@ -61,60 +61,43 @@ function parse(content) {
 
 // 解析为增强LRC
 function parse_lrc(content) {
-    const INFO_REPLACE_REGEX = /\[(ti|ar|al|by|offset|kana|language|ch):[^\]]*\]\n|\r/g;
-    const LINE_TIMESTAMP_REGEX = /^\[(?<start_time>\d+),(?<duration>\d+)\]/;
+    const LINE_TIMESTAMP_REGEX = /^\[(?<start_time>\d+),(?:\d+)\]/;
     const WORD_TIMESTAMP_REGEX = /[<\(](?<start_time>\d+),(?<duration>\d+),\d+[>\)](?<word>[^<\(\n]*)/g;
 
-    return content
-        .replace(INFO_REPLACE_REGEX, '')
+    return content.replace(/\[(ti|ar|al|by|offset|kana|language|ch):[^\]]*\]\n|\r/g, '')
         .split('\n')
         .filter(line => LINE_TIMESTAMP_REGEX.test(line))
         .map(line => {
-            const { groups } = line.match(LINE_TIMESTAMP_REGEX);
-            const lineStart = parseInt(groups.start_time);
-            return line
-                .replace(LINE_TIMESTAMP_REGEX, `[${formatTime(lineStart)}]<${formatTime(lineStart)}>`)
-                .replace(WORD_TIMESTAMP_REGEX, (_, ...args) => {
-                    const g = args[args.length - 1];
-                    const endTime = lineStart + parseInt(g.start_time) + parseInt(g.duration);
-                    return `${g.word}<${formatTime(endTime)}>`;
-                });
+            const lineStartTime = parseInt(LINE_TIMESTAMP_REGEX.exec(line).groups.start_time);
+            return line.replace(LINE_TIMESTAMP_REGEX, (_, startTime) => `[${formatTime(lineStartTime)}]<${formatTime(lineStartTime)}>`)
+                .replace(WORD_TIMESTAMP_REGEX, (_, start, duration, word) => `${word}<${formatTime(lineStartTime + parseInt(start) + parseInt(duration))}>`);
         });
 }
 
 // 解析翻译
 function parse_translate(content) {
-    if (content.includes("language") && !content.includes("eyJjb250ZW50IjpbXSwidmVyc2lvbiI6MX0=")) {
-        let match = content.match(/language:(.*)/)
+    if (!content.includes("language") || content.includes("eyJjb250ZW50IjpbXSwidmVyc2lvbiI6MX0=")) return [];
+    let match = content.match(/language:(.*)/)
 
-        const languageData = JSON.parse(atob(match[1].trim()));
-        return languageData.content
-            .filter(item => item.type === 1)
-            .flatMap(item =>
-                item.lyricContent.map(line =>
-                    line[0].startsWith("TME") || line[0].startsWith("//") ? "" : line[0].replace(/[,，]+/g, " ")
-                )
-            );
-    }
-    return [];
+    const languageData = JSON.parse(atob(match[1].trim()));
+    return languageData.content
+        .filter(item => item.type === 1)
+        .flatMap(item => item.lyricContent.map(([line]) =>
+            line.startsWith("TME") || line.startsWith("//") ? "" : line.replace(/[,， 　]+/g, " ")
+        ));
 }
 
 // 合并Lrc和翻译
 function parseMerge(lyric, translate) {
-    /**
-     * 合并Lrc和翻译，若无翻译则直接返回Lrc
-     */
-    if (!translate || translate.length === 0) return lyric;
+    if (!translate?.length) return lyric;
 
-    return lyric.reduce((result, lyricLine, index) => {
-        if (!lyricLine) return result;
+    return lyric.flatMap((lyricLine, index) => {
+        if (!lyricLine) return [];
 
-        result.push(lyricLine);
-        if (translate[index]) {
-            result.push(`${lyricLine.slice(0, 10)}${translate[index]}`);
-        }
+        const result = [lyricLine];
+        if (translate[index]) result.push(`${lyricLine.slice(0, 10)}${translate[index]}`);
         return result;
-    }, []);
+    });
 }
 
 // base64 decode
