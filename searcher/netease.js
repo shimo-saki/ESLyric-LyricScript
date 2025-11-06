@@ -1,20 +1,19 @@
-export function getConfig(config) {
-    config.name = "网易云音乐";
-    config.version = "1.2";
-    config.author = "ameyuri";
+export function getConfig(cfg) {
+    cfg.name = "网易云音乐";
+    cfg.version = "1.2.1";
+    cfg.author = "ameyuri";
 }
 
 export function getLyrics(meta, man) {
-    let songList = []
+    let songList = [];
 
     request(`https://music.163.com/api/search/get/web?csrf_token=hlpretag=&hlposttag=&s=${encodeURIComponent(meta.title)}&type=1&offset=0&total=true&limit=20`, (err, res, body) => {
-        if (err && res.statusCode !== 200) return;
-        const data = JSON.parse(body)["result"]["songs"] || [];
+        if (err || res?.statusCode !== 200) return;
 
-        for (let song of data) {
-            songList.push({ id: song.id, title: song.name, artist: song.artists.map(item => item.name).join('、') || '', album: song.album.name });
-        }
-    })
+        songList = (JSON.parse(body)?.result?.songs || []).map(song => ({
+            id: song.id, title: song.name, artist: song.artists?.map(item => item.name).join('、') || '', album: song.album?.name || ''
+        }));
+    });
 
     let lyricMeta = man.createLyric();
 
@@ -27,16 +26,16 @@ export function getLyrics(meta, man) {
             lyricMeta.artist = song.artist;
             lyricMeta.album = song.album;
             if (data?.yrc?.lyric) {
-                lyricMeta.lyricText = metaInfo(meta) + parse(data.yrc.lyric, (data?.tlyric?.lyric ?? ""));
+                lyricMeta.lyricText = metaInfo(meta) + parse(data.yrc.lyric, data?.tlyric?.lyric ?? "");
             } else if (data?.lrc?.lyric && !(/纯音乐|\[00:00\.00-1\]/).test(data.lrc.lyric)) {
-                lyricMeta.lyricText = metaInfo(meta) + data.lrc.lyric + (data?.tlyric?.lyric ?? "");
+                lyricMeta.lyricText = metaInfo(meta) + parseText(data.lrc.lyric) + parseText(data?.tlyric?.lyric ?? "");
             }
             man.addLyric(lyricMeta);
         });
     }
 }
 
-function parse(lyric, translate) {
+function parse(lyric, translate) {   
     const lrc = parseLrc(lyric);
     const trans = parseTranslate(translate);
 
@@ -44,16 +43,19 @@ function parse(lyric, translate) {
 }
 
 function parseLrc(content) {
-    // 替换信息标签
-    return content.replace(/\[(ti|ar|al|by|offset|kana|language|ch)?.*\]\s*\n/gm, "")
-        .replace(/^\[(\d+),(?:\d+)\]/gm, (_, startTime) => `[${formatTime(parseInt(startTime))}]<${formatTime(parseInt(startTime))}>`)
-        .replace(/[<\(](\d+),(\d+),(?:\d+)[>\)]([^<\(\n]*)/gm, (_, startTime, duration, word = "") => `${word}<${formatTime(parseInt(startTime) + parseInt(duration))}>`)
+    return content.replace(/^\[(ti|ar|al|by|offset|kana|language|ch).*\]\s*\r?\n?|.*\(\d+,\d+,\d+\)[作词曲].*\n?/gm, "")
+        .replace(/^\[(\d+),\d+\]/gm, (_, startTime) => `[${formatTime(parseInt(startTime))}]<${formatTime(parseInt(startTime))}>`)
+        .replace(/[<\(](\d+),(\d+),\d+[>\)]([^<\(\n]*)/gm, (_, startTime, duration, word = "") => `${word}<${formatTime(parseInt(startTime) + parseInt(duration))}>`)
         .split(/\r?\n/);
 }
 
+function parseText(content) {
+    return content.replace(/^\[.*\]\s*(作[词曲].*)?$|(?<=\[.*?\])\s+/gm, "")
+}
+
 function parseTranslate(content) {
-    return content.replace(/^\[.*?\]\s*\n?/gm, "")
-        .replace(/[,，　]+/gm, " ")
+    return content.replace(/^\[.*?\]\s*\r?\n?/gm, "")
+        .replace(/[,， 　]+/gm, " ")
         .split(/\r?\n/);
 }
 

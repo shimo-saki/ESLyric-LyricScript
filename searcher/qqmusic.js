@@ -1,21 +1,19 @@
-
 export function getConfig(cfg) {
-    cfg.name = "QQ 音乐"
-    cfg.version = "1.1"
-    cfg.author = "ameyuri"
+    cfg.name = "QQ 音乐";
+    cfg.version = "1.1.1";
+    cfg.author = "ameyuri";
 }
 
 export function getLyrics(meta, man) {
-    let songList = []
+    let songList = [];
 
     request(`https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=30&w=${meta.title}&format=json`, (err, res, body) => {
-        if (err || res.statusCode != 200) return
+        if (err || res?.statusCode !== 200) return;
 
-        let data = JSON.parse(body)["data"]["song"]["list"] || [];
-        for (let song of data) {
-            songList.push({ id: song.songid, title: song.songname, artist: song.singer.map(item => item.name).join('、') || '', album: song.albumname });
-        }
-    })
+        songList = (JSON.parse(body).data?.song?.list || []).map(song => ({
+            id: song.songid, title: song.songname || '', artist: song.singer?.map(item => item.name).join('、') || '', album: song.albumname || ''
+        }));
+    });
 
     let lyricMeta = man.createLyric();
 
@@ -43,19 +41,20 @@ export function getLyrics(meta, man) {
     }
     for (const song of songList) {
         data['music.musichallSong.PlayLyricInfo.GetPlayLyricInfo']['param'] = {
+            songID: song.id,
+            songName: btoa(song.title),
+            singerName: btoa(song.artist),
             albumName: btoa(song.album),
+            interval: meta.duration | 0,
             crypt: 1,
             ct: 19,
             cv: 1873,
-            interval: meta.duration | 0,
-            lrc_t: 0,
             qrc: 1,
             qrc_t: 0,
+            lrc: 1,
+            lrc_t: 0,
             roma: 1,
             roma_t: 0,
-            singerName: btoa(song.artist),
-            songID: song.id,
-            songName: btoa(song.title),
             trans: 1,
             trans_t: 0,
             type: -1
@@ -73,27 +72,26 @@ export function getLyrics(meta, man) {
         request(settings, (err, res, body) => {
             if (err || res.statusCode != 200) return
 
-            let data = JSON.parse(body)['music.musichallSong.PlayLyricInfo.GetPlayLyricInfo']['data']
+            let data = JSON.parse(body)['music.musichallSong.PlayLyricInfo.GetPlayLyricInfo']['data'];
             lyricMeta.title = song.title;
             lyricMeta.artist = song.artist;
             lyricMeta.album = song.album;
-            lyricMeta.lyricText = metaInfo(meta) + parse(decrypt(data.lyric), decrypt(data.trans));
+            lyricMeta.lyricText = metaInfo(meta) + parse(decrypt(data?.lyric), decrypt(data?.trans));
 
             man.addLyric(lyricMeta);
         })
     }
 
 }
+
 import * as decoder from "parser_ext.so"
 
 function decrypt(content) {
     if (!content) return "";
-    const zippedData = decoder.decodeQrc(restore(content));
-    if (!zippedData) return "";
-    const unzippedData = zlib.uncompress(zippedData);
-    if (!unzippedData) return "";
-    const text = arrayBufferToString(unzippedData)
-    return text.match(/LyricContent="([\s\S]*?)"\//)?.[1] ?? text;
+    const zipData = decoder.decodeQrc(restore(content));
+    const unzipData = zipData && zlib.uncompress(zipData);
+    content = unzipData && arrayBufferToString(unzipData)
+    return (content?.match(/LyricContent="([\s\S]*?)"\//)?.[1] ?? content) || '';
 }
 
 function restore(hexText) {
@@ -118,14 +116,14 @@ function parse(lyric, translate) {
 
 function parseLrc(content) {
     // 替换信息标签
-    return content.replace(/\[(ti|ar|al|by|offset|kana|language|ch).*\]\n/gm, "")
-        .replace(/^\[(\d+),(?:\d+)\]/gm, (_, startTime) => `[${formatTime(parseInt(startTime))}]<${formatTime(parseInt(startTime))}>`)
+    return content.replace(/^\[(ti|ar|al|by|offset|kana|language|ch).*\]\s*\r?\n?/gm, "")
+        .replace(/^\[(\d+),\d+\]/gm, (_, startTime) => `[${formatTime(parseInt(startTime))}]<${formatTime(parseInt(startTime))}>`)
         .replace(/[<\(](\d+),(\d+)[>\)]/gm, (_, startTime, duration) => `<${formatTime(parseInt(startTime) + parseInt(duration))}>`)
         .split(/\r?\n/);
 }
 
 function parseTranslate(content) {
-    return content.replace(/^\[.*?\]\n?|\/\//gm, "")
+    return content.replace(/^\[.*?\]\s*\r?\n?|.*(著作权|\/\/)$/gm, "")
         .replace(/[,， 　]+/gm, " ")
         .split(/\r?\n/);
 }
@@ -136,7 +134,7 @@ function parseMerge(lyric, translate) {
     return lyric.flatMap((lyricLine, index) => {
         if (!lyricLine) return [];
 
-        const result = [lyricLine];
+        let result = [lyricLine];
         if (translate[index]) result.push(`${lyricLine.slice(0, 10)}${translate[index]}`);
         return result;
     });
