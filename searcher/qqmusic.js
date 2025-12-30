@@ -1,6 +1,6 @@
 export function getConfig(cfg) {
     cfg.name = "QQ 音乐";
-    cfg.version = "1.1.1";
+    cfg.version = "1.1.3";
     cfg.author = "ameyuri";
 }
 
@@ -36,29 +36,31 @@ export function getLyrics(meta, man) {
         },
         'music.musichallSong.PlayLyricInfo.GetPlayLyricInfo': {
             method: 'GetPlayLyricInfo',
-            module: 'music.musichallSong.PlayLyricInfo'
+            module: 'music.musichallSong.PlayLyricInfo',
+            param: {
+                crypt: 1,
+                ct: 19,
+                cv: 1873,
+                qrc: 1,
+                qrc_t: 0,
+                lrc: 1,
+                lrc_t: 0,
+                roma: 1,
+                roma_t: 0,
+                trans: 1,
+                trans_t: 0,
+                type: -1
+            }
         }
     }
-    for (const song of songList) {
-        data['music.musichallSong.PlayLyricInfo.GetPlayLyricInfo']['param'] = {
+    songList.forEach(song => {
+        Object.assign(data['music.musichallSong.PlayLyricInfo.GetPlayLyricInfo'].param, {
             songID: song.id,
             songName: btoa(song.title),
             singerName: btoa(song.artist),
             albumName: btoa(song.album),
             interval: meta.duration | 0,
-            crypt: 1,
-            ct: 19,
-            cv: 1873,
-            qrc: 1,
-            qrc_t: 0,
-            lrc: 1,
-            lrc_t: 0,
-            roma: 1,
-            roma_t: 0,
-            trans: 1,
-            trans_t: 0,
-            type: -1
-        }
+        });
         let settings = {
             method: 'post',
             url: `https://u.y.qq.com/cgi-bin/musicu.fcg?pcachetime=${new Date().getTime()}`,
@@ -80,75 +82,51 @@ export function getLyrics(meta, man) {
 
             man.addLyric(lyricMeta);
         })
-    }
-
-}
-
-import * as decoder from "parser_ext.so"
-
-function decrypt(content) {
-    if (!content) return "";
-    const zipData = decoder.decodeQrc(restore(content));
-    const unzipData = zipData && zlib.uncompress(zipData);
-    content = unzipData && arrayBufferToString(unzipData)
-    return (content?.match(/LyricContent="([\s\S]*?)"\//)?.[1] ?? content) || '';
-}
-
-function restore(hexText) {
-    if (hexText.length % 2 !== 0) return null;
-
-    const sig = "[offset:0]\n";
-    const arrBuf = new Uint8Array(hexText.length / 2 + sig.length);
-    arrBuf.set(sig.split('').map(char => char.charCodeAt(0)), 0);
-
-    for (let i = 0; i < hexText.length; i += 2) {
-        arrBuf[sig.length + i / 2] = parseInt(hexText.substr(i, 2), 16);
-    }
-    return arrBuf.buffer;
-}
-
-function parse(lyric, translate) {
-    const lrc = parseLrc(lyric);
-    const trans = parseTranslate(translate);
-
-    return parseMerge(lrc, trans).join('\n');
-}
-
-function parseLrc(content) {
-    // 替换信息标签
-    return content.replace(/^\[(ti|ar|al|by|offset|kana|language|ch).*\]\s*\r?\n?/gm, "")
-        .replace(/^\[(\d+),\d+\]/gm, (_, startTime) => `[${formatTime(parseInt(startTime))}]<${formatTime(parseInt(startTime))}>`)
-        .replace(/[<\(](\d+),(\d+)[>\)]/gm, (_, startTime, duration) => `<${formatTime(parseInt(startTime) + parseInt(duration))}>`)
-        .split(/\r?\n/);
-}
-
-function parseTranslate(content) {
-    return content.replace(/^\[.*?\]\s*\r?\n?|.*(著作权|\/\/)$/gm, "")
-        .replace(/[,， 　]+/gm, " ")
-        .split(/\r?\n/);
-}
-
-function parseMerge(lyric, translate) {
-    if (!translate?.length) return lyric;
-
-    return lyric.flatMap((lyricLine, index) => {
-        if (!lyricLine) return [];
-
-        let result = [lyricLine];
-        if (translate[index]) result.push(`${lyricLine.slice(0, 10)}${translate[index]}`);
-        return result;
     });
 }
 
-function metaInfo(meta) {
-    return `[ti:${meta.title}]\n[ar:${meta.artist}]\n[al:${meta.album}]\n`;
-}
+const parse = (lyric, translate) => {
+    lyric = parseLrc(lyric);
+    translate = parseTranslate(translate);
 
-function formatTime(time) {
-    const date = new Date(time);
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    const seconds = date.getSeconds().toString().padStart(2, '0');
-    const milliseconds = date.getMilliseconds().toString().padStart(3, '0').slice(0, 2);
+    return parseMerge(lyric, translate).join('\n');
+};
 
-    return `${minutes}:${seconds}.${milliseconds}`;
-}
+const parseLrc = content =>
+    content.replace(/^\[(ti|ar|al|by|offset|kana|language|ch).*\]\s*\r?\n?/gm, "")
+        .replace(/[  　]+/gm, " ")
+        .replace(/^\[(\d+),\d+\]/gm, (_, startTime) => `[${formatTime(parseInt(startTime))}]<${formatTime(parseInt(startTime))}>`)
+        .replace(/[<\(](\d+),(\d+)[>\)]/gm, (_, startTime, duration) => `<${formatTime(parseInt(startTime) + parseInt(duration))}>`)
+        .split(/\r?\n/);
+
+const parseTranslate = content =>
+    content.replace(/^\[.*?\]\s*\r?\n?|.*(著作权|\/\/)$/gm, "")
+        .replace(/[,，  　]+/gm, " ")
+        .split(/\r?\n/);
+
+const parseMerge = (lyric, translate) =>
+    !translate?.length ? lyric : lyric.flatMap((lyricLine, i) =>
+        lyricLine ? (translate[i] ? [lyricLine, `${lyricLine.slice(0, 10)}${translate[i]}`] : [lyricLine]) : []
+    );
+
+import * as decoder from "parser_ext.so"
+
+const decrypt = content => {
+    if (!content) return "";
+    const zipData = decoder.decodeQrc(restore(content));
+    content = zipData && arrayBufferToString(zlib.uncompress(zipData));
+    return (content?.match(/LyricContent="([\s\S]*?)"\//)?.[1] ?? content) || '';
+};
+
+const restore = hexText => {
+    if (hexText.length % 2 !== 0) return null;
+
+    const sig = "[offset:0]\n";
+    return Uint8Array.from({ length: (hexText.length / 2) + sig.length }, (_, idx) =>
+        idx < sig.length ? sig.charCodeAt(idx) : parseInt(hexText.substr((idx - sig.length) * 2, 2), 16)
+    ).buffer;
+};
+
+const metaInfo = meta => `[ti:${meta.title}]\n[ar:${meta.artist}]\n[al:${meta.album}]\n`;
+
+const formatTime = time => new Date(time).toISOString().slice(14, -2);
